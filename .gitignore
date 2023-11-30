@@ -1,0 +1,7 @@
+.vs
+*.exe
+*.obj
+Debug/
+x64/
+*.user
+build/
