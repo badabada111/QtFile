@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/">
+      <file>icons/normal/option.png</file>
+      <file>icons/normal/pause.png</file>
+      <file>icons/normal/delete.png</file>
+      <file>icons/normal/right.png</file>
+      <file>icons/normal/about.png</file>
+      <file>icons/normal/edit.png</file>
+      <file>icons/normal/move.png</file>
+      <file>icons/normal/moveall.png</file>
+      <file>icons/normal/play.png</file>
+      <file>icons/normal/playall.png</file>
+      <file>icons/normal/quit.png</file>
+      <file>icons/normal/pauseall.png</file>
+      <file>icons/normal/open.png</file>
+
+    </qresource>
+</RCC>
