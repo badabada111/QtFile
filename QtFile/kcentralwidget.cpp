@@ -368,11 +368,7 @@ void KCentralWidget::backupFile(const QString& filePath, const QString& timestam
 	// **格式化时间戳，避免非法字符**
 	QString safeTimestamp = QDateTime::fromString(timestamp, "yyyy-MM-dd HH:mm:ss")
 		.toString("yyyyMMdd_HHmmss");
-
-	// **替换特殊字符，避免空格和非法字符**
 	QString safeFileName = QFileInfo(filePath).fileName();
-	safeFileName.replace(" ", "_");  // 替换空格
-	safeFileName.replace(":", "_");  // 替换冒号等字符
 
 	// **生成备份文件路径**
 	QString backupFileName = QString("%1/%2_%3.bak")
