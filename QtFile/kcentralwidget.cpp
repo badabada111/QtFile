@@ -1,5 +1,5 @@
 #include "kcentralwidget.h"
-
+#include <QTextEdit>
 
 KCentralWidget::KCentralWidget(QWidget* parent)
 	: QWidget(parent)
@@ -250,7 +250,6 @@ void KCentralWidget::onRowDoubleClicked(const QModelIndex& index)
 
 void KCentralWidget::performRollback(const QString& filePath, const QString& timestamp)
 {
-    
     QString backupDirPath = QDir::currentPath() + "/backup";
     QDir backupDir(backupDirPath);
 
@@ -259,10 +258,7 @@ void KCentralWidget::performRollback(const QString& filePath, const QString& tim
         return;
     }
 
-    // 获取文件名（无路径）
     QString fileName = QFileInfo(filePath).fileName();
-    
-    // 查找所有相关备份文件（匹配文件名前缀）
     QStringList filters;
     filters << QString("%1_*.bak").arg(fileName);
     QStringList backupFiles = backupDir.entryList(filters, QDir::Files, QDir::Time);
@@ -272,26 +268,21 @@ void KCentralWidget::performRollback(const QString& filePath, const QString& tim
         return;
     }
 
-    // 目标时间转换（确保时间格式匹配 backup 时的格式）
     QDateTime targetTime = QDateTime::fromString(timestamp, "yyyy-MM-dd HH:mm:ss");
-
     if (!targetTime.isValid()) {
         QMessageBox::warning(this, u8"回溯失败", u8"时间戳格式错误！");
         return;
     }
 
-    // 遍历所有备份，找到最接近但不超过 `targetTime` 的备份
     QString closestBackup;
     QDateTime closestTime;
 
     for (const QString& file : backupFiles) {
-        // 提取时间戳部分（格式：yyyyMMdd_HHmmss）
         QString timeStr = file.mid(fileName.length() + 1, 15);
         QDateTime fileTime = QDateTime::fromString(timeStr, "yyyyMMdd_HHmmss");
 
         if (!fileTime.isValid()) continue;
 
-        // 找到最接近 `targetTime` 且不晚于它的备份
         if (fileTime <= targetTime && (closestTime.isNull() || fileTime > closestTime)) {
             closestBackup = file;
             closestTime = fileTime;
@@ -303,7 +294,6 @@ void KCentralWidget::performRollback(const QString& filePath, const QString& tim
         return;
     }
 
-    // 备份文件完整路径
     QString backupFilePath = backupDir.absoluteFilePath(closestBackup);
 
     if (!QFile::exists(backupFilePath)) {
@@ -311,16 +301,93 @@ void KCentralWidget::performRollback(const QString& filePath, const QString& tim
         return;
     }
 
-    // **回溯操作**
-    QFile originalFile(filePath);
+    // **读取备份文件内容**
+    QFile backupFile(backupFilePath);
+    if (!backupFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, u8"回溯失败", u8"无法打开备份文件：" + backupFilePath);
+        return;
+    }
 
-    // 先删除原文件，确保可以覆盖
+    QTextStream backupStream(&backupFile);
+    backupStream.setCodec("UTF-8");
+    QString backupContent = backupStream.readAll();
+    backupFile.close();
+
+    // **读取当前文件内容**
+    QFile originalFile(filePath);
+    QString originalContent;
+    if (originalFile.exists() && originalFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream originalStream(&originalFile);
+        originalStream.setCodec("UTF-8");
+        originalContent = originalStream.readAll();
+        originalFile.close();
+    }
+
+    // **比对文件内容**
+    QStringList backupLines = backupContent.split("\n");
+    QStringList originalLines = originalContent.split("\n");
+
+    QString htmlBackupContent;
+    QString htmlOriginalContent;
+
+    for (int i = 0; i < qMax(backupLines.size(), originalLines.size()); ++i) {
+        QString backupLine = (i < backupLines.size()) ? backupLines[i] : "";
+        QString originalLine = (i < originalLines.size()) ? originalLines[i] : "";
+
+        if (backupLine != originalLine) {
+            // 高亮显示修改部分
+            htmlBackupContent += QString("<span style='background-color: #FFCCCC;'>%1</span><br>").arg(backupLine.toHtmlEscaped());
+            htmlOriginalContent += QString("<span style='background-color: #CCFFCC;'>%1</span><br>").arg(originalLine.toHtmlEscaped());
+        } else {
+            htmlBackupContent += QString("%1<br>").arg(backupLine.toHtmlEscaped());
+            htmlOriginalContent += QString("%1<br>").arg(originalLine.toHtmlEscaped());
+        }
+    }
+
+    // **展示改动内容**
+    QDialog diffDialog(this);
+    diffDialog.setWindowTitle(u8"文件改动内容");
+    diffDialog.resize(800, 600);
+
+    QVBoxLayout* layout = new QVBoxLayout(&diffDialog);
+
+    QLabel* backupLabel = new QLabel(u8"备份文件内容：", &diffDialog);
+    QTextEdit* backupTextEdit = new QTextEdit(&diffDialog);
+    backupTextEdit->setReadOnly(true);
+    backupTextEdit->setHtml(htmlBackupContent);
+
+    QLabel* originalLabel = new QLabel(u8"当前文件内容：", &diffDialog);
+    QTextEdit* originalTextEdit = new QTextEdit(&diffDialog);
+    originalTextEdit->setReadOnly(true);
+    originalTextEdit->setHtml(htmlOriginalContent);
+
+    QPushButton* confirmButton = new QPushButton(u8"继续回溯", &diffDialog);
+    QPushButton* cancelButton = new QPushButton(u8"取消", &diffDialog);
+
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(confirmButton);
+    buttonLayout->addWidget(cancelButton);
+
+    layout->addWidget(backupLabel);
+    layout->addWidget(backupTextEdit);
+    layout->addWidget(originalLabel);
+    layout->addWidget(originalTextEdit);
+    layout->addLayout(buttonLayout);
+
+    connect(confirmButton, &QPushButton::clicked, &diffDialog, &QDialog::accept);
+    connect(cancelButton, &QPushButton::clicked, &diffDialog, &QDialog::reject);
+
+    if (diffDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // **回溯操作**
     if (originalFile.exists() && !originalFile.remove()) {
         QMessageBox::warning(this, u8"回溯失败", u8"无法删除原文件：" + filePath);
         return;
     }
 
-    // 复制备份文件回原路径
     if (QFile::copy(backupFilePath, filePath)) {
         QMessageBox::information(this, u8"回溯成功", QString(u8"文件 %1 已恢复到 %2").arg(filePath).arg(closestTime.toString("yyyy-MM-dd HH:mm:ss")));
     } else {
@@ -368,7 +435,11 @@ void KCentralWidget::backupFile(const QString& filePath, const QString& timestam
 	// **格式化时间戳，避免非法字符**
 	QString safeTimestamp = QDateTime::fromString(timestamp, "yyyy-MM-dd HH:mm:ss")
 		.toString("yyyyMMdd_HHmmss");
+
+	// **替换特殊字符，避免空格和非法字符**
 	QString safeFileName = QFileInfo(filePath).fileName();
+	//safeFileName.replace(" ", "_");  // 替换空格
+	//safeFileName.replace(":", "_");  // 替换冒号等字符
 
 	// **生成备份文件路径**
 	QString backupFileName = QString("%1/%2_%3.bak")

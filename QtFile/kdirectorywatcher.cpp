@@ -87,7 +87,7 @@ void KDirectoryWatcher::run()
                     action = u8"未知"; 
                     break;
                 }
-
+  
                 // 检查文件扩展名  
                 QFileInfo fileInfo(m_directory + "\\" + fileName);//获取文件相关信息
                 QString fileExtension = fileInfo.suffix();//获取选中文件拓展名
@@ -100,6 +100,22 @@ void KDirectoryWatcher::run()
                     offset += pNotify->NextEntryOffset;
                     continue;
                 }
+
+                 //**过滤临时文件**
+                if (fileName.startsWith("~$") || 
+                    fileExtension.compare("tmp", Qt::CaseInsensitive) == 0 ||  
+                    fileExtension.compare("asd", Qt::CaseInsensitive) == 0 || 
+                    fileExtension.compare("crdownload", Qt::CaseInsensitive) == 0 || 
+                    fileExtension.compare("part", Qt::CaseInsensitive) == 0 ||
+                    fileExtension.compare("swp", Qt::CaseInsensitive) == 0 ||  
+                    fileExtension.compare("swo", Qt::CaseInsensitive) == 0 ||
+                    fileExtension.compare("~tmp", Qt::CaseInsensitive) == 0)
+                {
+                    qDebug() << "忽略临时文件" << fullPath;
+                    offset += pNotify->NextEntryOffset;
+                    continue;
+                }
+
                 bool shouldWatch = false;
 
                 if (m_extensionsToWatch.isEmpty() || m_extensionsToWatch.contains(fileExtension, Qt::CaseInsensitive)) 
@@ -134,7 +150,6 @@ void KDirectoryWatcher::run()
                         qDebug() << "Emitting fileChanged for:" << fullPath << "Action:" << action;
                         emit fileChanged(fullPath, action);
                     }
-
                 }
 
                 offset += pNotify->NextEntryOffset;
@@ -145,6 +160,35 @@ void KDirectoryWatcher::run()
     // 关闭句柄  
     CloseHandle(m_hDir);
 }
+
+// 判断文件是否真的被修改
+bool KDirectoryWatcher::isFileModified(const QFileInfo& fileInfo)
+{
+    static QMap<QString, QDateTime> lastModifiedTimes;
+
+    // 获取文件的当前修改时间
+    QString filePath = fileInfo.absoluteFilePath();
+    QDateTime currentTime = fileInfo.lastModified();
+
+    // 检查文件的修改时间是否有变化
+    if (lastModifiedTimes.contains(filePath)) {
+        QDateTime lastModifiedTime = lastModifiedTimes[filePath];
+
+        // 如果修改时间不同，认为文件被修改
+        if (lastModifiedTime != currentTime) {
+            lastModifiedTimes[filePath] = currentTime;
+            return true;  // 说明文件被修改
+        }
+    }
+    else {
+        // 文件是第一次检测到，存储当前修改时间
+        lastModifiedTimes[filePath] = currentTime;
+        return true; // 文件第一次被修改
+    }
+
+    return false;  // 文件没有发生实际修改
+}
+
 
 void KDirectoryWatcher::startWatching() 
 {

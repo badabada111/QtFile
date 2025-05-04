@@ -31,6 +31,10 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDesktopServices>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
 
 class KMainWindow : public QWidget
 {
@@ -58,6 +62,8 @@ public:
 protected:
     virtual void contextMenuEvent(QContextMenuEvent* event) override;
     virtual void closeEvent(QCloseEvent* event) override;
+    virtual void dragEnterEvent(QDragEnterEvent* event) override;
+    virtual void dropEvent(QDropEvent* event) override;
 
 private slots:
     void createAction();
@@ -104,6 +110,7 @@ private:
     void importData(const QString& filePath);
     void exportData(const QString& filePath);
     void onOpenFileButtonClicked();
+    void addWatchDirectory(const QString& directory);
 
 };
 

@@ -51,6 +51,14 @@ KMainWindow::KMainWindow(QWidget *parent)
     (void)connect(m_pTimer, &QTimer::timeout, this, &KMainWindow::onTimerTimeout);
     m_pTimer->start(1000); // 每 5 秒检查一次
     //loadTableViewData();
+    setAcceptDrops(true);
+
+    QString fileName = "./config.xml";  // 也可以使用其他固定路径
+    if (QFile::exists(fileName))
+    {
+        importData(fileName);
+    }
+
 }
 
 void KMainWindow::onExportButtonClicked()
@@ -258,14 +266,6 @@ void KMainWindow::importData(const QString& fileName)
 
                 m_directoryWatchers[directory] = watcher;
                 (void)connect(watcher, &KDirectoryWatcher::fileChanged, this, &KMainWindow::onDirectoryChanged);
-                //(void)connect(watcher, &KDirectoryWatcher::fileChanged, [](const QString& file) {
-                //    qDebug() << "文件被修改：" << file;
-
-                //    // 延迟 500ms 后执行备份，防止正在写入
-                //    QTimer::singleShot(500, [file]() {
-                //        KCentralWidget::createFileBackup(file);
-                //        });
-                //    });
                 watchedFiles.append(directory);
                 (void)connect(m_pCentralWidget->m_pTableView1, &QTableWidget::cellChanged, this, &KMainWindow::onCheckboxStateChanged);
             }
@@ -390,6 +390,96 @@ void KMainWindow::onAddFileButtonClicked()
     addUserOperationLog(currentTime, operation, details);
     updateStatusBar();
 }
+
+void KMainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (event->mimeData()->hasUrls()) {
+        event->acceptProposedAction(); // 允许拖放
+    }
+    else {
+        event->ignore();
+    }
+}
+
+void KMainWindow::dropEvent(QDropEvent* event)
+{
+    QList<QUrl> urls = event->mimeData()->urls();
+    if (urls.isEmpty()) return;
+
+    for (const QUrl& url : urls) {
+        QString filePath = url.toLocalFile();
+        QFileInfo fileInfo(filePath);
+
+        if (fileInfo.isDir()) {
+            qDebug() << u8"拖入的文件夹：" << filePath;
+            addWatchDirectory(filePath);  // 处理拖入的文件夹
+        }
+        else {
+            qDebug() << u8"拖入的文件：" << filePath;
+        }
+    }
+}
+
+void KMainWindow::addWatchDirectory(const QString& directory)
+{
+    if (directory.isEmpty()) 
+        return;
+
+    if (m_directoryWatchers.contains(directory))
+    {
+        QMessageBox::warning(this, tr(u8"警告"), tr(u8"该目录已经在监听列表中."));
+        return;
+    }
+
+    m_pToolBar->m_pLineEdit->setText(directory);
+    m_pDirectoryWatcher = new KDirectoryWatcher(directory);
+    m_directoryWatchers[directory] = m_pDirectoryWatcher;
+    watchedFiles.append(directory);
+
+    // 默认监听所有事件
+    QSet<int> allowedActions = { FILE_ACTION_ADDED, FILE_ACTION_REMOVED, FILE_ACTION_MODIFIED, FILE_ACTION_RENAMED_OLD_NAME, FILE_ACTION_RENAMED_NEW_NAME };
+    m_pDirectoryWatcher->setAllowedActions(allowedActions);
+    m_pDirectoryWatcher->setWatchSubdirectories(true);  // 默认监听子目录
+
+    QStringList watchExtensions, ignoreExtensions, watchFileExtensions, ignoreFileExtensions;
+    m_pDirectoryWatcher->setExtensionsToWatch(watchExtensions);
+    m_pDirectoryWatcher->setExtensionsToIgnore(ignoreExtensions);
+    m_pDirectoryWatcher->setFilesToWatch(watchFileExtensions);
+    m_pDirectoryWatcher->setFilesToIgnore(ignoreFileExtensions);
+
+    m_pDirectoryWatcher->startWatching();
+    (void)connect(m_pDirectoryWatcher, &KDirectoryWatcher::fileChanged, this, &KMainWindow::onDirectoryChanged);
+    qDebug() << u8"拖入的文件夹路径:" << directory;
+
+    // 插入到界面表格
+    int row = m_pCentralWidget->m_pTableView1->rowCount();
+    m_pCentralWidget->m_pTableView1->insertRow(row);
+    m_pCentralWidget->m_pTableView1->setItem(row, 0, new QTableWidgetItem(directory));
+    m_pCentralWidget->m_pTableView1->setItem(row, 1, new QTableWidgetItem(u8"是"));
+
+    for (int col = 2; col <= 6; ++col)
+    {
+        QTableWidgetItem* checkBoxItem = new QTableWidgetItem();
+        checkBoxItem->setCheckState(Qt::Checked);
+        m_pCentralWidget->m_pTableView1->setItem(row, col, checkBoxItem);
+        (void)connect(m_pCentralWidget->m_pTableView1, &QTableWidget::cellChanged, this, &KMainWindow::onCheckboxStateChanged);
+    }
+
+    m_pCentralWidget->m_pTableView1->setItem(row, 7, new QTableWidgetItem(watchExtensions.join(", ")));
+    m_pCentralWidget->m_pTableView1->setItem(row, 8, new QTableWidgetItem(ignoreExtensions.join(", ")));
+    m_pCentralWidget->m_pTableView1->setItem(row, 9, new QTableWidgetItem(watchFileExtensions.join(", ")));
+    m_pCentralWidget->m_pTableView1->setItem(row, 10, new QTableWidgetItem(ignoreFileExtensions.join(", ")));
+
+    QString currentTime = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    m_pCentralWidget->m_pTableView1->setItem(row, 11, new QTableWidgetItem(currentTime));
+
+    QString operation = QString::fromLocal8Bit("开始监听");
+    QString details = QString(u8"文件: %1, 关注的后缀: 空, 忽略的后缀: 空, 指定关注文件: 空, 忽略指定的文件: 空").arg(directory);
+    addUserOperationLog(currentTime, operation, details);
+
+    updateStatusBar();
+}
+
 
 void KMainWindow::onOptionFileButtonClicked()
 {
@@ -1283,6 +1373,9 @@ void KMainWindow::closeEvent(QCloseEvent* event)
     deleteHistoryCheckBox->setChecked(false); 
 
     msgBox.setCheckBox(deleteHistoryCheckBox);
+
+    QString fileName = "./config.xml";
+    exportData(fileName);
 
     int reply = msgBox.exec();
 

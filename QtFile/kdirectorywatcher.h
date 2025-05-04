@@ -8,6 +8,8 @@
 #include <QWaitCondition>  
 #include <QMutex> 
 #include <QSet>
+#include <QFileInfo>
+#include <QMap>
 
 
 class KDirectoryWatcher : public QThread {
@@ -36,6 +38,7 @@ public:
     QSet<int> KDirectoryWatcher::getAllowedActions() const;
     void setWatchSubdirectories(bool watchSubdirs);
     bool isWatchSubdirectories() const;
+    bool isFileModified(const QFileInfo& fileInfo);
 
 signals:
     void fileChanged(const QString& fileName, const QString& changeType);
